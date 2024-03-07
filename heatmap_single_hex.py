@@ -36,18 +36,8 @@ df.rename(columns={df.columns[2]: "Year_BP"}, inplace=True)
 
 # Generate hexagons for each population id.
 df["h3.hex"] = df.apply(
-    lambda row: generate_hex(row["Lat"], row["Long"], 5), axis = 1
+    lambda row: generate_hex(row["Lat"], row["Long"], 6), axis = 1
     )
-
-
-# Generate basemap
-
-map = folium.Map(location = [50.1, 14.1], 
-                 tiles = "Cartodb dark_matter", 
-                 zoom_start = 4,
-                 max_bounds = True)
-
-
 
 # Parent hex as key, value as a list with g_dist and neighbours
 hexagons_dict = {} 
@@ -57,7 +47,7 @@ for index, row in df.iterrows():
     id = row["h3.hex"]
     
     # Get the neighbours
-    neighbors = h3.k_ring_distances(id, 19)
+    neighbors = h3.k_ring_distances(id, 13)
     
     # Get the value
     g_dist = row["Dist"]
@@ -75,7 +65,7 @@ colored_hex = {}
 step_list = np.arange(0, 1.05, 0.05)[::-1]
 
 
-##### Plot the hexagons 
+##### Lets check which hexagorns are to be painted and not painted.
 # Loop through the hexagon dictionary   
 for hexagons in hexagons_dict.values():
     # Loop through the rings around the parent hexagon
@@ -88,31 +78,35 @@ for hexagons in hexagons_dict.values():
         step = step_list[idx]
         
         # If the hexagon has been painted, we check if the new gradient is
-        # greater than the old one. If greater, we update the value.
-        paint = True
-                
+        # greater than the old one. If greater, we update the value.   
         for hex_hash in ring:            
             if hex_hash in colored_hex:
                 if colored_hex[hex_hash] > g_value*step:
-                    paint = False
+                    continue
             else:
-                paint = True
                 colored_hex[hex_hash] = g_value*step
-        
-            if paint:    
-                # Get color for hexagon
-                col = get_gradient(g_value, transform = step)
 
-                # Plot the neighbour                
-                folium.Polygon(
-                    locations = h3.h3_to_geo_boundary(hex_hash, geo_json = False),
-                    stroke = False,
-                    color = col,
-                    weight = 0,
-                    fill_color=col,
-                    fill_opacity=0.9,
-                    fill=True
-                ).add_to(map)
+
+# Generate basemap
+map = folium.Map(location = [50.1, 14.1], 
+                 tiles = "Cartodb dark_matter", 
+                 zoom_start = 4,
+                 max_bounds = True)
+
+# Plot hexagons        
+for hexa, gradient in colored_hex.items(): 
+    # Get color for hexagon
+    col = get_gradient(gradient)
+    # Plot the neighbour                
+    folium.Polygon(
+        locations = h3.h3_to_geo_boundary(hexa, geo_json = False),
+        stroke = False,
+        color = col,
+        weight = 0,
+        fill_color=col,
+        fill_opacity=0.9,
+        fill=True
+    ).add_to(map)
 
 # Plot the map
 map
