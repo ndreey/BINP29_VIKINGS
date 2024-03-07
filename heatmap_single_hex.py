@@ -3,6 +3,7 @@ from h3 import h3
 import folium 
 import colorcet as cc
 import pandas as pd
+import numpy as np
 
 # Function to generate hexagon for each row
 def generate_hex(lat, lng, res):
@@ -13,14 +14,14 @@ def generate_hex(lat, lng, res):
     # Returns a list of the vertices of the hexagon.
     return hex
 
-def get_gradient(number, step = 1):
+def get_gradient(number, transform = 1):
     # Set number to a integer
     number = int(number*100)
     
     # Create a color map from blue to red
     gradient = cc.CET_L8[28:228:2]
     # Map the number to the color
-    color = gradient[int(number*step)]
+    color = gradient[int(number*transform)]
     
     
     return color
@@ -35,25 +36,28 @@ df.rename(columns={df.columns[2]: "Year_BP"}, inplace=True)
 
 # Generate hexagons for each population id.
 df["h3.hex"] = df.apply(
-    lambda row: generate_hex(row["Lat"], row["Long"], 4), axis = 1
+    lambda row: generate_hex(row["Lat"], row["Long"], 5), axis = 1
     )
 
 
 # Generate basemap
-map = folium.Map(location = [50.1, 14.1], tiles = "Cartodb dark_matter", zoom_start = 4)
+
+map = folium.Map(location = [50.1, 14.1], 
+                 tiles = "Cartodb dark_matter", 
+                 zoom_start = 4,
+                 max_bounds = True)
 
 
 
 # Parent hex as key, value as a list with g_dist and neighbours
 hexagons_dict = {} 
-
 for index, row in df.iterrows():
     
     # Get hex_id
     id = row["h3.hex"]
     
     # Get the neighbours
-    neighbors = h3.k_ring_distances(id, 3)
+    neighbors = h3.k_ring_distances(id, 19)
     
     # Get the value
     g_dist = row["Dist"]
@@ -67,60 +71,46 @@ for index, row in df.iterrows():
 # If the old gradient is less than the new one, we update the value.
 colored_hex = {}
 
-# Plot the hexagons    
-for parent, items in hexagons_dict.items():
-    
-    # Store the hexagon and the gradient value
-    colored_hex[parent] = items[1]
-    
-    # Get the parent color
-    p_col = get_gradient(items[1])
-    
-    # Plot the parent
-    folium.Polygon(
-        locations = h3.h3_to_geo_boundary(parent, geo_json = False),
-        color=p_col,
-        weight=0,
-        fill_color=p_col,
-        fill_opacity=0.4,
-        fill=True
-    ).add_to(map)
-    
-    for idx, neighbour in enumerate(items[0][1:]):
+# Step list of 0 to 1 in increments of 0.05
+step_list = np.arange(0, 1.05, 0.05)[::-1]
+
+
+##### Plot the hexagons 
+# Loop through the hexagon dictionary   
+for hexagons in hexagons_dict.values():
+    # Loop through the rings around the parent hexagon
+    for idx, ring in enumerate(hexagons[0]):
         
-        if idx == 0:
-            step = 0.95
-            
-        elif idx == 1:
-            step = 0.90
-            
-        else:
-            step = 0.85
+        # Get the genetic distance of the parent hexagon
+        g_value = hexagons[1]
         
-        # If the neighbour has been painted, we check if the new gradient is
-        # greater than the old one. If so, we update the value.
+        # Get the gradient step, the first ring is always the parent.
+        step = step_list[idx]
+        
+        # If the hexagon has been painted, we check if the new gradient is
+        # greater than the old one. If greater, we update the value.
         paint = True
-        
-        for hex_hash in neighbour:            
+                
+        for hex_hash in ring:            
             if hex_hash in colored_hex:
-                if colored_hex[hex_hash] > items[1]*step:
+                if colored_hex[hex_hash] > g_value*step:
                     paint = False
-                else:
-                    paint = True
-                    colored_hex[hex_hash] = items[1]*step
+            else:
+                paint = True
+                colored_hex[hex_hash] = g_value*step
         
             if paint:    
-                # Get color for neighbor
-                n_col = get_gradient(items[1], step = step)
+                # Get color for hexagon
+                col = get_gradient(g_value, transform = step)
 
-                # Plot the neighbours
-                
+                # Plot the neighbour                
                 folium.Polygon(
                     locations = h3.h3_to_geo_boundary(hex_hash, geo_json = False),
-                    color=n_col,
-                    weight=0,
-                    fill_color=n_col,
-                    fill_opacity=0.4,
+                    stroke = False,
+                    color = col,
+                    weight = 0,
+                    fill_color=col,
+                    fill_opacity=0.9,
                     fill=True
                 ).add_to(map)
 
